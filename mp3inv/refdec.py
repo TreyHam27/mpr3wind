@@ -165,6 +165,18 @@ class Harness:
             return pcm, sb.reshape(ngr, nch, 32, 18)
         return pcm
 
+    def poly(self, state, sb, nch):
+        """sb float32 [ngr, nch, 576] -> pcm (polyphase stage only)."""
+        sb = np.ascontiguousarray(sb, dtype=np.float32)
+        ngr = sb.shape[0]
+        pcm = np.zeros(ngr * 576 * nch, self.sample_dtype)
+        self.lib.h_poly(state, sb.ctypes.data_as(ctypes.c_void_p), ngr, nch,
+                        pcm.ctypes.data_as(ctypes.c_void_p))
+        pcm = pcm.reshape(-1, nch)
+        if self.is_float:
+            pcm = pcm.astype(np.float64) * 32768.0
+        return pcm
+
     def sfbtab(self, hdr4, block_type, mixed=0):
         w = np.zeros(40, np.int32)
         nl, ns = ctypes.c_int32(), ctypes.c_int32()

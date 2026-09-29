@@ -489,3 +489,17 @@ int h_sfbtab(const uint8_t *hdr4, int block_type, int mixed, int32_t *widths, in
     *n_long = gi[0].n_long_sfb; *n_short = gi[0].n_short_sfb;
     return i;
 }
+
+/* polyphase stage only: sb[ngr][nch][576] (grbuf layout sb*18+slot) -> pcm */
+int h_poly(mp3dec_t *dec, const float *sb, int ngr, int nch, mp3d_sample_t *pcm)
+{
+    static mp3dec_scratch_t s;
+    int igr;
+    for (igr = 0; igr < ngr; igr++)
+    {
+        memcpy(s.grbuf[0], sb + 576*nch*igr, 576*nch*sizeof(float));
+        if (nch == 1) memset(s.grbuf[1], 0, 576*sizeof(float));
+        mp3d_synth_granule(dec->qmf_state, s.grbuf[0], 18, nch, pcm + 576*nch*igr, s.syn[0]);
+    }
+    return 0;
+}
