@@ -474,8 +474,20 @@ def enforce_bit_limit(cand, limit=4095, log=print):
                     bits = limit + 1
                 if bits <= limit:
                     break
-                nz = np.nonzero(r["ix"])[0]
-                r["ix"][nz[-max(1, len(nz) // 20):]] = 0
+                # prefer coarsening a high band's scalefactor (re-snapped from the estimate)
+                # over zeroing values: the error stays at quantisation-noise level
+                widths, n_long, n_short, mixed = _lay(cand.sr, cand.types[c][g])
+                st, en = scales.entry_bounds(widths)
+                cands_j = [j for j in range(len(widths)) if r["iscf"][j] > 0 and np.any(r["ix"][st[j]:en[j]])]
+                if cands_j:
+                    j = cands_j[-1]
+                    r["iscf"][j] -= 1
+                    cand.rescale(g, c)
+                    sc = cand.scale_of[g, c]
+                    r["ix"][st[j]:en[j]] = lattice.snap(cand.xhat[g, c, st[j]:en[j]], sc[st[j]])[0]
+                else:
+                    nz = np.nonzero(r["ix"])[0]
+                    r["ix"][nz[-max(1, len(nz) // 50):]] = 0
                 trimmed += 1
     if trimmed:
         log(f"  bit limit: trimmed {trimmed} times to stay within {limit} bits/granule")
