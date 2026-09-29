@@ -158,7 +158,8 @@ class MonoRepair:
         self.G = len(types)
         self.verbose = False
         self.milp_time = 5.0
-        self.lookahead = 1
+        self.lookahead = 0
+        self.time_budget = 600.0       # seconds for the whole sweep
 
     def _cands(self, ix, g0, g1, zmax, max_cands):
         cands = []
@@ -190,6 +191,11 @@ class MonoRepair:
         while k < G:
             r0, r1 = 576 * k, min(N, 576 * (k + 1))
             if np.array_equal(round_model(y[r0:r1]), x[r0:r1]):
+                k += 1
+                continue
+            if time.time() - t0 > self.time_budget:
+                stats["failures"].append(k)
+                stats["timed_out"] = True
                 k += 1
                 continue
             ok = False
