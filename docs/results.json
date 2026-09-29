@@ -1,0 +1,1239 @@
+{
+ "toy_tones_mono": {
+  "channels": 1,
+  "samples": 178560,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 310
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 0,
+  "mismatch_direct": 0,
+  "mismatch_final_model": 0,
+  "trimmed_granules": 0,
+  "bytes": 19137,
+  "kbps": 37.8,
+  "seconds": 58.8,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    178560,
+    1
+   ],
+   "shape_target": [
+    178560,
+    1
+   ],
+   "exact": true,
+   "mismatches": 0,
+   "max_abs_diff": 0
+  },
+  "wall_s": 59.2,
+  "orig_bytes": 19137,
+  "orig_kbps": 37.8,
+  "orig_block_types": {
+   "0": 620
+  },
+  "orig_ms_frames": 0
+ },
+ "toy_music_mono": {
+  "channels": 1,
+  "samples": 178560,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 310
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 0,
+  "mismatch_direct": 73,
+  "repair": {
+   "before": 0,
+   "after": 0,
+   "steps": 0,
+   "changes": 0
+  },
+  "repair_failed_granules": [],
+  "mismatch_final_model": 0,
+  "trimmed_granules": 0,
+  "bytes": 29303,
+  "kbps": 57.9,
+  "seconds": 76.1,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    178560,
+    1
+   ],
+   "shape_target": [
+    178560,
+    1
+   ],
+   "exact": true,
+   "mismatches": 0,
+   "max_abs_diff": 0
+  },
+  "wall_s": 76.1,
+  "orig_bytes": 29303,
+  "orig_kbps": 57.9,
+  "orig_block_types": {
+   "0": 620
+  },
+  "orig_ms_frames": 0
+ },
+ "toy_music_stereo": {
+  "channels": 2,
+  "samples": 178560,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 310
+   },
+   {
+    "0": 310
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 0,
+  "mismatch_direct": 55,
+  "repair": {
+   "before": 0,
+   "after": 0,
+   "steps": 0,
+   "changes": 0
+  },
+  "repair_failed_granules": [],
+  "mismatch_final_model": 0,
+  "trimmed_granules": 0,
+  "bytes": 35503,
+  "kbps": 70.1,
+  "seconds": 144.7,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    178560,
+    2
+   ],
+   "shape_target": [
+    178560,
+    2
+   ],
+   "exact": true,
+   "mismatches": 0,
+   "max_abs_diff": 0
+  },
+  "wall_s": 144.7,
+  "orig_bytes": 35503,
+  "orig_kbps": 70.1,
+  "orig_block_types": {
+   "0": 620
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_music_m64": {
+  "channels": 1,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 147,
+    "2": 7,
+    "3": 4
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 269,
+  "mismatch_direct": 961,
+  "repair": {
+   "before": 379,
+   "after": 379,
+   "steps": 25,
+   "changes": 0,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   130,
+   131,
+   132,
+   133,
+   134,
+   135,
+   136,
+   137,
+   138,
+   139,
+   140,
+   141,
+   142,
+   143,
+   144,
+   145,
+   146,
+   147,
+   148,
+   149,
+   150,
+   151,
+   152,
+   153,
+   154,
+   155,
+   156
+  ],
+  "mismatch_final_model": 374,
+  "trimmed_granules": 0,
+  "bytes": 18513,
+  "kbps": 71.8,
+  "seconds": 1547.5,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    1
+   ],
+   "shape_target": [
+    91008,
+    1
+   ],
+   "exact": false,
+   "mismatches": 374,
+   "max_abs_diff": 1
+  },
+  "wall_s": 1547.5,
+  "orig_bytes": 16508,
+  "orig_kbps": 64.0,
+  "orig_block_types": {
+   "0": 301,
+   "1": 4,
+   "2": 7,
+   "3": 4
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_music_m64_q20": {
+  "channels": 1,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 146,
+    "2": 7,
+    "3": 5
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 670,
+  "mismatch_direct": 5586,
+  "repair": {
+   "before": 2743,
+   "after": 2731,
+   "steps": 97,
+   "changes": 229,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   41,
+   42,
+   43,
+   44,
+   73,
+   74,
+   75,
+   76,
+   77,
+   78,
+   79,
+   80,
+   81,
+   82,
+   83,
+   84,
+   85,
+   86,
+   91,
+   92,
+   93,
+   94,
+   95,
+   96,
+   97,
+   98,
+   99,
+   100,
+   101,
+   102,
+   103,
+   104,
+   105,
+   106,
+   107
+  ],
+  "mismatch_final_model": 2731,
+  "trimmed_granules": 0,
+  "bytes": 22703,
+  "kbps": 88.0,
+  "seconds": 1764.4,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    1
+   ],
+   "shape_target": [
+    91008,
+    1
+   ],
+   "exact": false,
+   "mismatches": 2731,
+   "max_abs_diff": 2
+  },
+  "wall_s": 1764.4,
+  "orig_bytes": 16508,
+  "orig_kbps": 64.0,
+  "orig_block_types": {
+   "0": 301,
+   "1": 4,
+   "2": 7,
+   "3": 4
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_tones_m128": {
+  "channels": 1,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 152,
+    "2": 3,
+    "3": 3
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 545,
+  "mismatch_direct": 7237,
+  "repair": {
+   "before": 3500,
+   "after": 3500,
+   "steps": 20,
+   "changes": 0,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   45,
+   46,
+   47,
+   48,
+   49,
+   50,
+   51,
+   52,
+   53,
+   54,
+   55,
+   56,
+   57,
+   58,
+   59,
+   60
+  ],
+  "mismatch_final_model": 3497,
+  "trimmed_granules": 0,
+  "bytes": 40438,
+  "kbps": 156.8,
+  "seconds": 1951.9,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    1
+   ],
+   "shape_target": [
+    91008,
+    1
+   ],
+   "exact": false,
+   "mismatches": 3497,
+   "max_abs_diff": 1
+  },
+  "wall_s": 1952.6,
+  "orig_bytes": 33017,
+  "orig_kbps": 128.0,
+  "orig_block_types": {
+   "0": 310,
+   "1": 2,
+   "2": 2,
+   "3": 2
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_music_m128": {
+  "channels": 1,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 145,
+    "2": 8,
+    "3": 5
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 1063,
+  "mismatch_direct": 9085,
+  "repair": {
+   "before": 5634,
+   "after": 5634,
+   "steps": 20,
+   "changes": 0,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   64,
+   65,
+   66,
+   67,
+   68,
+   69,
+   70,
+   71,
+   72,
+   73,
+   74,
+   75,
+   76,
+   77,
+   78,
+   79,
+   80,
+   81,
+   82,
+   83
+  ],
+  "mismatch_final_model": 5629,
+  "trimmed_granules": 0,
+  "bytes": 38872,
+  "kbps": 150.7,
+  "seconds": 1741.8,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    1
+   ],
+   "shape_target": [
+    91008,
+    1
+   ],
+   "exact": false,
+   "mismatches": 5629,
+   "max_abs_diff": 1
+  },
+  "wall_s": 1741.8,
+  "orig_bytes": 33017,
+  "orig_kbps": 128.0,
+  "orig_block_types": {
+   "0": 301,
+   "1": 4,
+   "2": 7,
+   "3": 4
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_music_m128_q20": {
+  "channels": 1,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 146,
+    "2": 7,
+    "3": 5
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 1429,
+  "mismatch_direct": 11979,
+  "repair": {
+   "before": 7297,
+   "after": 7297,
+   "steps": 25,
+   "changes": 0,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   59,
+   60,
+   61,
+   62,
+   63,
+   64,
+   65,
+   66,
+   67,
+   68,
+   69,
+   70,
+   71,
+   72,
+   73
+  ],
+  "mismatch_final_model": 7292,
+  "trimmed_granules": 0,
+  "bytes": 35998,
+  "kbps": 139.5,
+  "seconds": 1880.3,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    1
+   ],
+   "shape_target": [
+    91008,
+    1
+   ],
+   "exact": false,
+   "mismatches": 7292,
+   "max_abs_diff": 2
+  },
+  "wall_s": 1880.3,
+  "orig_bytes": 33017,
+  "orig_kbps": 128.0,
+  "orig_block_types": {
+   "0": 301,
+   "1": 4,
+   "2": 7,
+   "3": 4
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_music_mV2": {
+  "channels": 1,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 147,
+    "2": 7,
+    "3": 4
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 89,
+  "mismatch_direct": 1639,
+  "repair": {
+   "before": 1005,
+   "after": 1005,
+   "steps": 70,
+   "changes": 0,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   93,
+   94,
+   95,
+   96,
+   97,
+   119,
+   120,
+   121,
+   124,
+   125,
+   126,
+   127,
+   128,
+   129,
+   130,
+   131,
+   132,
+   133,
+   134,
+   135,
+   136,
+   137,
+   138,
+   139,
+   140,
+   141,
+   142,
+   143,
+   144,
+   145,
+   146,
+   147,
+   148,
+   149,
+   150,
+   151,
+   152,
+   153,
+   154,
+   155,
+   156
+  ],
+  "mismatch_final_model": 1002,
+  "trimmed_granules": 0,
+  "bytes": 20009,
+  "kbps": 77.6,
+  "seconds": 1392.7,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    1
+   ],
+   "shape_target": [
+    91008,
+    1
+   ],
+   "exact": false,
+   "mismatches": 1002,
+   "max_abs_diff": 1
+  },
+  "wall_s": 1392.7,
+  "orig_bytes": 19034,
+  "orig_kbps": 73.8,
+  "orig_block_types": {
+   "0": 301,
+   "1": 4,
+   "2": 7,
+   "3": 4
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_music_m192": {
+  "channels": 1,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 145,
+    "2": 8,
+    "3": 5
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 1019,
+  "mismatch_direct": 10970,
+  "repair": {
+   "before": 7307,
+   "after": 7307,
+   "steps": 20,
+   "changes": 0,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   59,
+   60,
+   61,
+   63,
+   64,
+   65,
+   66,
+   67,
+   68,
+   69,
+   70,
+   71,
+   72,
+   73,
+   74,
+   75,
+   76
+  ],
+  "mismatch_final_model": 7307,
+  "trimmed_granules": 0,
+  "bytes": 47962,
+  "kbps": 185.9,
+  "seconds": 1720.5,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    1
+   ],
+   "shape_target": [
+    91008,
+    1
+   ],
+   "exact": false,
+   "mismatches": 7307,
+   "max_abs_diff": 2
+  },
+  "wall_s": 1721.0,
+  "orig_bytes": 49527,
+  "orig_kbps": 192.0,
+  "orig_block_types": {
+   "0": 301,
+   "1": 4,
+   "2": 7,
+   "3": 4
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_music_m320": {
+  "channels": 1,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 143,
+    "2": 9,
+    "3": 6
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 979,
+  "mismatch_direct": 10346,
+  "repair": {
+   "before": 7824,
+   "after": 7824,
+   "steps": 25,
+   "changes": 0,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   61,
+   62,
+   63,
+   64,
+   65,
+   66,
+   67,
+   68,
+   69,
+   70,
+   71,
+   72,
+   73,
+   74,
+   75
+  ],
+  "mismatch_final_model": 7899,
+  "trimmed_granules": 14,
+  "bytes": 54122,
+  "kbps": 209.8,
+  "seconds": 1789.8,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    1
+   ],
+   "shape_target": [
+    91008,
+    1
+   ],
+   "exact": false,
+   "mismatches": 7899,
+   "max_abs_diff": 2
+  },
+  "wall_s": 1790.2,
+  "orig_bytes": 82546,
+  "orig_kbps": 320.0,
+  "orig_block_types": {
+   "0": 301,
+   "1": 4,
+   "2": 7,
+   "3": 4
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_music_m320_q20": {
+  "channels": 1,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 146,
+    "2": 8,
+    "3": 4
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 1373,
+  "mismatch_direct": 7195,
+  "repair": {
+   "before": 5147,
+   "after": 5147,
+   "steps": 35,
+   "changes": 0,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   2,
+   3,
+   4,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   45,
+   52,
+   53,
+   54,
+   55,
+   56,
+   57,
+   58,
+   59,
+   60
+  ],
+  "mismatch_final_model": 5145,
+  "trimmed_granules": 0,
+  "bytes": 41667,
+  "kbps": 161.5,
+  "seconds": 1739.6,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    1
+   ],
+   "shape_target": [
+    91008,
+    1
+   ],
+   "exact": false,
+   "mismatches": 5145,
+   "max_abs_diff": 2
+  },
+  "wall_s": 1740.0,
+  "orig_bytes": 82546,
+  "orig_kbps": 320.0,
+  "orig_block_types": {
+   "0": 301,
+   "1": 4,
+   "2": 7,
+   "3": 4
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_music_s128": {
+  "channels": 2,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 145,
+    "2": 8,
+    "3": 5
+   },
+   {
+    "0": 147,
+    "2": 7,
+    "3": 4
+   }
+  ],
+  "ms_frames": 0,
+  "refined_entries": 676,
+  "mismatch_direct": 2677,
+  "repair": {
+   "before": 1294,
+   "after": 1294,
+   "steps": 55,
+   "changes": 0,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   72,
+   73,
+   74,
+   75,
+   76,
+   94,
+   95,
+   96,
+   97,
+   125,
+   126,
+   127,
+   128,
+   129,
+   130,
+   131,
+   132,
+   133,
+   134,
+   135,
+   136,
+   137,
+   138,
+   139,
+   140,
+   141,
+   142,
+   143,
+   144,
+   145,
+   146,
+   147,
+   148,
+   149,
+   150,
+   151,
+   152,
+   153,
+   154,
+   155,
+   156,
+   157
+  ],
+  "mismatch_final_model": 1294,
+  "trimmed_granules": 0,
+  "bytes": 37711,
+  "kbps": 146.2,
+  "seconds": 2144.6,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    2
+   ],
+   "shape_target": [
+    91008,
+    2
+   ],
+   "exact": false,
+   "mismatches": 1294,
+   "max_abs_diff": 1
+  },
+  "wall_s": 2145.4,
+  "orig_bytes": 33017,
+  "orig_kbps": 128.0,
+  "orig_block_types": {
+   "0": 286,
+   "1": 8,
+   "2": 14,
+   "3": 8
+  },
+  "orig_ms_frames": 0
+ },
+ "lame_music_j128": {
+  "channels": 2,
+  "samples": 91008,
+  "sr": 44100,
+  "types": [
+   {
+    "0": 145,
+    "2": 8,
+    "3": 5
+   },
+   {
+    "0": 147,
+    "2": 7,
+    "3": 4
+   }
+  ],
+  "ms_frames": 44,
+  "refined_entries": 765,
+  "mismatch_direct": 6388,
+  "repair": {
+   "before": 3169,
+   "after": 3169,
+   "steps": 45,
+   "changes": 0,
+   "timed_out": true
+  },
+  "repair_failed_granules": [
+   52,
+   53,
+   71,
+   72,
+   73,
+   74,
+   94,
+   95,
+   96,
+   97,
+   98,
+   103,
+   104,
+   105,
+   106,
+   107,
+   108,
+   109,
+   110,
+   111,
+   112,
+   113,
+   114,
+   115,
+   116,
+   117,
+   118,
+   119,
+   120,
+   121,
+   122,
+   123,
+   124,
+   125,
+   126,
+   127,
+   128,
+   129,
+   130,
+   131,
+   132,
+   133,
+   134,
+   135,
+   136,
+   137,
+   138,
+   139,
+   140,
+   141
+  ],
+  "mismatch_final_model": 3161,
+  "trimmed_granules": 0,
+  "bytes": 39911,
+  "kbps": 154.7,
+  "seconds": 2058.3,
+  "verify": {
+   "sr_equal": true,
+   "shape_candidate": [
+    91008,
+    2
+   ],
+   "shape_target": [
+    91008,
+    2
+   ],
+   "exact": false,
+   "mismatches": 3161,
+   "max_abs_diff": 1
+  },
+  "wall_s": 2058.3,
+  "orig_bytes": 33017,
+  "orig_kbps": 128.0,
+  "orig_block_types": {
+   "0": 286,
+   "1": 8,
+   "2": 14,
+   "3": 8
+  },
+  "orig_ms_frames": 45
+ }
+}

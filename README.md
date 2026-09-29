@@ -8,6 +8,13 @@ identical to the WAV, sample for sample, under a fixed reference decoder:
 This is an analysis-by-synthesis / inverse-decoder proof of concept, not an encoder.
 See [`docs/REPORT.md`](docs/REPORT.md) for the method, results, and the obstacles.
 
+**Status:**
+* **Exact** (every sample, verified with the pristine decoder) for constrained,
+  coarsely quantised material (`mp3inv/toyenc.py`: mono and L/R stereo).
+* **Not yet exact** for real LAME 3.100 encodes: 0.4–8.7% of samples stay off by 1–2
+  LSB. The cause is the quiet high-frequency bands that LAME quantises with steps near
+  the 16-bit LSB. Details in the report, §4–5.
+
 ## Reference decoder
 
 [minimp3](https://github.com/lieff/minimp3) (CC0), pinned in `third_party/minimp3`,
