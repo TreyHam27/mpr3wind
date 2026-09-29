@@ -145,8 +145,23 @@ def entry_scales(dec, widths, n_long, n_short, mixed, ms):
     return out
 
 
+class CodedSource:
+    """Spectra of one *coded* channel (L, R, M or S per granule) with fixed block types,
+    presented with the same interface as Analysis for build_granules."""
+
+    def __init__(self, X, sigma, sr, tail):
+        self.X, self.sigma, self.sr, self.tail = X, sigma, sr, tail
+        self.G = X.shape[0]
+        self._curves = {}
+
+    def spectra(self, c, c2, gs):
+        gs = np.asarray(gs)
+        return self.X[gs], self.sigma[gs]
+
+
 def build_granules(an, types, ms=0, rho_refine=8.0, shift=16, max_bits=4000, log=None):
-    """Estimate scales, decompose into side info and snap ix for every granule of one channel.
+    """Estimate scales, decompose into side info and snap ix for every granule of one coded
+    channel.  `ms` is a scalar or a per-granule array (MS-stereo scale offset).
 
     Returns recs (GR_DTYPE [G]), per-granule info, and arrays xhat/sigma/scale_of [G, 576]."""
     from .bitstream import encode_granule
@@ -157,6 +172,7 @@ def build_granules(an, types, ms=0, rho_refine=8.0, shift=16, max_bits=4000, log
     sigma = np.zeros((G, 576))
     scale_of = np.zeros((G, 576), np.float32)
     for g in range(G):
+        msg = int(ms[g]) if np.ndim(ms) else int(ms)
         c = types[g]
         c2 = types[g + 1] if g + 1 < G else LONG
         X, sig = an.spectra(c, c2, [g])
@@ -172,11 +188,11 @@ def build_granules(an, types, ms=0, rho_refine=8.0, shift=16, max_bits=4000, log
                 C, refined, rho = refine_curves(C0, X[0], sig[0], widths, rr, shift)
             else:
                 C, refined, rho = C0, np.zeros(len(widths), bool), None
-            dec = scales.decompose_curves(C, n_long, n_short, c == MIXED, ms)
+            dec = scales.decompose_curves(C, n_long, n_short, c == MIXED, msg)
             if not np.isfinite(dec["cost"]) and rr:
                 rr = rr / 2 if rr > 2 else 0
                 continue
-            sc = entry_scales(dec, widths, n_long, n_short, c == MIXED, ms)
+            sc = entry_scales(dec, widths, n_long, n_short, c == MIXED, msg)
             ix = np.where(sc > 0, lattice.snap(X[0], np.where(sc > 0, sc, 1))[0], 0)
             if rr and np.abs(ix).max() >= lattice.IX_MAX:     # clipped: refinement too fine here
                 rr = rr / 2 if rr > 2 else 0
@@ -193,8 +209,6 @@ def build_granules(an, types, ms=0, rho_refine=8.0, shift=16, max_bits=4000, log
             if bits <= max_bits or not rr:
                 break
             rr = rr / 2 if rr > 2 else 0
-        q = dec["q"]
-        relaxed = rr != rho_refine
         bt, mx = _bt_mx(c)
         if c == LONG and c2 in (SHORT, MIXED):
             bt = 1                           # START window for legality
@@ -208,153 +222,152 @@ def build_granules(an, types, ms=0, rho_refine=8.0, shift=16, max_bits=4000, log
         r["n_long_sfb"], r["n_short_sfb"] = n_long, n_short
         r["ix"] = ix
         scale_of[g] = sc
-        info.append(dict(q=q, relaxed=relaxed, bits=bits, refined=int(refined.sum()), rho=rho))
+        info.append(dict(q=dec["q"], relaxed=rr != rho_refine, bits=bits, refined=int(refined.sum())))
     return recs, info, xhat, sigma, scale_of
 
 
-def synth_check(recs_by_ch, sr, mode=3, mode_ext=0):
-    """Parametric synthesis with the harness (s16).  recs_by_ch: [nch][G]."""
-    H = Harness("s16")
-    nch = len(recs_by_ch)
-    G = len(recs_by_ch[0])
-    hdr = header_bytes(sr, 9, 0, mode, mode_ext)
-    st = H.new_state(hdr)
-    grans = np.stack([np.asarray(r) for r in recs_by_ch], axis=1)   # [G, nch]
-    hdrs = np.frombuffer(hdr * G, np.uint8).reshape(G, 4)
-    return H.synth(st, hdrs, grans, nch)
+# ------------------------------------------------------------------ state
+class Candidate:
+    """The evolving solution: decoded parameters for G granules x C coded channels."""
+
+    def __init__(self, x, sr, recs, types, ms, xhat, sigma, scale_of):
+        self.x = x                           # int16 [N, C]
+        self.sr = sr
+        self.recs = recs                     # GR_DTYPE [G, C]
+        self.types = types                   # [C][G] block-type classes
+        self.ms = np.asarray(ms, bool)       # [G]
+        self.xhat, self.sigma, self.scale_of = xhat, sigma, scale_of   # [G, C, 576]
+        self.G, self.C = recs.shape
+        self.H = Harness("f32")
+        self.hdrs = self._headers()
+
+    def _headers(self):
+        out = np.zeros((self.G, 4), np.uint8)
+        for g in range(self.G):
+            if self.C == 1:
+                h = header_bytes(self.sr, 9, 0, 3, 0)
+            else:
+                h = header_bytes(self.sr, 9, 0, 1, 2 if self.ms[g] else 0)
+            out[g] = np.frombuffer(h, np.uint8)
+        return out
+
+    def synth(self, ix=None):
+        """Exact decoder float output [N, C] for coefficient array ix [G, C, 576]."""
+        if ix is not None:
+            self.recs["ix"] = ix
+        st = self.H.new_state(bytes(self.hdrs[0]))
+        return self.H.synth(st, self.hdrs, self.recs, self.C)
+
+    def rescale(self, g, c):
+        self.scale_of[g, c] = entry_scales(self.recs[g, c], *_lay(self.sr, self.types[c][g]),
+                                           int(self.ms[g]))
+
+    def frames(self):
+        out = []
+        for f in range(self.G // 2):
+            g = 2 * f
+            mode, ext = (3, 0) if self.C == 1 else (1, 2 if self.ms[g] else 0)
+            out.append((mode, ext, [[self.recs[g + gr, ch] for ch in range(self.C)] for gr in range(2)]))
+        return out
 
 
-def to_frames(recs_by_ch, mode=3, mode_ext=0):
-    nch = len(recs_by_ch)
-    G = len(recs_by_ch[0])
-    frames = []
-    for f in range(G // 2):
-        frames.append((mode, mode_ext, [[recs_by_ch[ch][2 * f + gr] for ch in range(nch)] for gr in range(2)]))
-    return frames
+def _lay(sr, c):
+    widths, n_long, n_short = layout(sr, c)
+    return widths, n_long, n_short, c == MIXED
 
 
-def reconstruct(x, sr, log=print, **kw):
-    """Blind reconstruction from target PCM x (int16 [N, ch]).  Returns (mp3 bytes, stats).
-
-    Stereo is handled as independent L/R channels (header mode 'stereo'); each channel
-    decodes exactly as it would in a mono stream (verified by the tests), so the mono
-    machinery is reused per channel.
-    """
-    N, nch = x.shape
-    if sr not in (32000, 44100, 48000):
-        raise NotImplementedError("only MPEG-1 sample rates are implemented")
-    if N % 1152:
-        raise ValueError("target length must be a whole number of MPEG-1 frames (1152 samples)")
-    stats = {"channels": nch, "samples": N, "sr": sr}
-    if nch == 1:
-        mp3, recs, st = reconstruct_mono(x, sr, log=log, **kw)
-        stats.update(st)
-        return mp3, stats
-    all_recs = []
-    stats["per_channel"] = []
-    for ch in range(nch):
-        log(f"--- channel {ch}")
-        _, recs, st = reconstruct_mono(x[:, ch:ch + 1], sr, log=log, **kw)
-        all_recs.append(recs)
-        stats["per_channel"].append(st)
-    mp3 = write_mp3(to_frames(all_recs, mode=0), sr, nch)
-    stats["bytes"] = len(mp3)
-    stats["kbps"] = round(len(mp3) * 8 / (N / sr) / 1000, 1)
-    return mp3, stats
+def mismatches(y, x, r0=0, r1=None):
+    from .rounding import round_model
+    r1 = len(x) if r1 is None else r1
+    return int(np.count_nonzero(round_model(y[r0:r1]) != x[r0:r1]))
 
 
-def float_synth_fn(recs, sr, mode=3, mode_ext=0):
-    """Returns f(ix [G,576]) -> exact decoder pre-rounding output [N] for one channel."""
-    H = Harness("f32")
-    G = len(recs)
-    hdr = header_bytes(sr, 9, 0, mode, mode_ext)
-    hdrs = np.frombuffer(hdr * G, np.uint8).reshape(G, 4)
-    base = np.array(recs, copy=True)
-
-    def f(ix):
-        base["ix"] = ix
-        st = H.new_state(hdr)
-        return H.synth(st, hdrs, base[:, None], 1)[:, 0]
-    f.base = base
-    return f
-
-
-def tail_resolve(x, recs, fs, xhat, scale_of, types, sr, ntail=4, lam=1e-5, log=print):
+# ------------------------------------------------------------------- tail
+def tail_resolve(cand, ntail=4, lam=1e-5, log=print):
     """Re-estimate the last `ntail` granules by ridge least squares on the observed samples.
 
-    The decoder's output for the final granules extends past the end of the file, so the
-    TDAC/polyphase inverse is ill-conditioned there.  Here the earlier granules are held
-    at their current values and the tail coefficients solve
-        min ||M a - r||^2 + lam * ||M||^2 ||a||^2
-    over the samples that exist, which pulls unobservable directions to zero."""
+    The decoder output of the final granules extends past the end of the file, so the
+    TDAC/polyphase inverse is ill-conditioned there.  Earlier granules are held at their
+    current values; the tail coefficients of all coded channels jointly solve
+        min ||M a - r||^2 + lam * mean||M_col||^2 ||a||^2
+    over the samples that exist (both output channels; MS granules map a coded M value to
+    (+,+) and S to (+,-)), which pulls unobservable directions to zero."""
     from .repair import responses
-    G = len(recs)
+    G, C, N = cand.G, cand.C, len(cand.x)
     g0 = max(0, G - ntail)
-    N = len(x)
     r0 = 576 * g0
-    ix0 = recs["ix"].copy()
+    L = N - r0
+    keep = cand.recs["ix"].copy()
+    ix0 = keep.copy()
     ix0[g0:] = 0
-    y0 = fs(ix0)
-    r = x[r0:].astype(np.float64) - y0[r0:]
+    y0 = cand.synth(ix0)
+    cand.recs["ix"] = keep
+    r = np.concatenate([cand.x[r0:, oc].astype(np.float64) - y0[r0:, oc] for oc in range(C)])
     cols = []
     for g in range(g0, G):
-        R = responses(types[g], types[g + 1] if g + 1 < G else LONG, sr)
-        for i in range(576):
-            col = np.zeros(N - r0)
+        for c in range(C):
+            R = responses(cand.types[c][g], cand.types[c][g + 1] if g + 1 < G else LONG, cand.sr)
+            if C == 2 and cand.ms[g]:
+                signs = (1.0, 1.0 if c == 0 else -1.0)
+            else:
+                signs = tuple(1.0 if oc == c else 0.0 for oc in range(C))
             st = 576 * g - r0
-            L = min(len(col) - st, R.shape[1])
-            col[st:st + L] = R[i, :L]
-            cols.append(col)
+            n = min(L - st, R.shape[1])
+            for i in range(576):
+                col = np.zeros(C * L)
+                for oc, sgn in enumerate(signs):
+                    if sgn:
+                        col[oc * L + st:oc * L + st + n] = sgn * R[i, :n]
+                cols.append(col)
     M = np.stack(cols, axis=1)
     reg = lam * np.mean(np.sum(M * M, axis=0))
-    a = np.linalg.solve(M.T @ M + reg * np.eye(M.shape[1]), M.T @ r)
-    a = a.reshape(G - g0, 576)
+    a = np.linalg.solve(M.T @ M + reg * np.eye(M.shape[1]), M.T @ r).reshape(G - g0, C, 576)
     for k, g in enumerate(range(g0, G)):
-        sc = scale_of[g]
-        xhat[g] = a[k]
-        recs["ix"][g] = np.where(sc > 0, lattice.snap(a[k], np.where(sc > 0, sc, 1))[0], 0)
+        for c in range(C):
+            sc = cand.scale_of[g, c]
+            cand.xhat[g, c] = a[k, c]
+            cand.recs["ix"][g, c] = np.where(sc > 0, lattice.snap(a[k, c], np.where(sc > 0, sc, 1))[0], 0)
     log(f"  tail: re-solved last {G - g0} granules by ridge LS")
 
 
-def exact_polish(x, recs, fs, xhat, sigma, scale_of, granules, log=print, max_evals=4000, zmax=6.0):
+# ----------------------------------------------------------- fallbacks
+def exact_polish(cand, granules, log=print, max_evals=4000, back=2, deltas=(1, -1)):
     """Greedy coordinate search evaluated with the decoder itself (no model).
 
-    For each failing PCM granule k, candidate moves are +-1 and zeroing on coefficients of
-    granules k-2..k that are nonzero or within zmax*sigma of a nonzero lattice value.
-    A move is kept iff the exact mismatch count on samples [576(k-2), end) decreases."""
-    from .rounding import round_model
-    G = len(recs)
-    N = len(x)
-    evals = 0
-    fixed = 0
-    y = fs(recs["ix"])
+    For each failing PCM granule k, candidate moves are +-1 and zeroing on nonzero or
+    near-threshold coefficients of granules k-2..k (all coded channels).  A move is kept iff
+    the exact mismatch count on samples [576(k-2), end) decreases."""
+    G, C = cand.G, cand.C
+    evals = fixed = 0
+    y = cand.synth()
     for k in granules:
-        g0 = max(0, k - 2)
+        g0 = max(0, k - back)
         r0 = 576 * g0
-        cur = int(np.count_nonzero(round_model(y[r0:]) != x[r0:]))
+        cur = mismatches(y, cand.x, r0)
         improved = True
         while cur and improved and evals < max_evals:
             improved = False
             moves = []
             for g in range(g0, min(G, k + 1)):
-                ix = recs["ix"][g]
-                s = scale_of[g]
-                near = (np.abs(xhat[g]) > (np.abs(xhat[g]) - zmax * sigma[g]).clip(0)) & (s > 0)
-                idx = np.nonzero((ix != 0) | (np.abs(xhat[g]) >= s * 0.5 - zmax * sigma[g]) & near)[0]
-                for i in idx:
-                    for nv in {int(ix[i]) + 1, int(ix[i]) - 1, 0}:
-                        if nv != ix[i] and abs(nv) <= lattice.IX_MAX:
-                            cost = abs(lattice.dequant(nv, s[i]) - xhat[g, i]) / sigma[g, i]
-                            moves.append((cost, g, i, nv))
+                for c in range(C):
+                    ix = cand.recs["ix"][g, c]
+                    s = cand.scale_of[g, c]
+                    xh, sg = cand.xhat[g, c], cand.sigma[g, c]
+                    idx = np.nonzero((s > 0) & ((ix != 0) | (np.abs(xh) >= 0.5 * s - 6 * sg)))[0]
+                    for i in idx:
+                        for nv in {int(ix[i]) + d for d in deltas} | {0}:
+                            if nv != ix[i] and abs(nv) <= lattice.IX_MAX:
+                                cost = abs(lattice.dequant(nv, s[i]) - xh[i]) / sg[i]
+                                moves.append((cost, g, c, i, nv))
             moves.sort()
-            for cost, g, i, nv in moves:
+            for cost, g, c, i, nv in moves:
                 if evals >= max_evals:
                     break
-                old = recs["ix"][g][i]
-                recs["ix"][g][i] = nv
-                yt = fs(recs["ix"])
+                old = cand.recs["ix"][g, c][i]
+                cand.recs["ix"][g, c][i] = nv
+                yt = cand.synth()
                 evals += 1
-                m = int(np.count_nonzero(round_model(yt[r0:]) != x[r0:]))
+                m = mismatches(yt, cand.x, r0)
                 if m < cur:
                     cur, y = m, yt
                     fixed += 1
@@ -362,119 +375,167 @@ def exact_polish(x, recs, fs, xhat, sigma, scale_of, granules, log=print, max_ev
                     if not cur:
                         break
                 else:
-                    recs["ix"][g][i] = old
+                    cand.recs["ix"][g, c][i] = old
     log(f"  exact polish: {fixed} moves kept, {evals} decoder evaluations")
     return fixed
 
 
-def rec_scales(rec, sr, types_c, ms=0):
-    widths, n_long, n_short = layout(sr, types_c)
-    return entry_scales(rec, widths, n_long, n_short, types_c == MIXED, ms)
-
-
-def scale_moves(x, recs, fs, xhat, sigma, types, sr, granules, log=print, max_nnz=4, passes=2):
+def scale_moves(cand, granules, log=print, max_nnz=4, passes=2):
     """Fallback for granules the integer repair cannot fix: the scale of a sparse band is
     ambiguous (a lone value fits several (ix, scale) pairs within noise).  Try every
     scalefactor value for sparse bands near the failure, re-snap that band, and keep
     changes that reduce the exact mismatch count."""
-    from .rounding import round_model
-    base = fs.base
-    G = len(recs)
     fixed = 0
-    y = fs(recs["ix"])
+    y = cand.synth()
+    recs = cand.recs
     for k in granules:
         g0 = max(0, k - 2)
-        r0, r1 = 576 * g0, min(len(x), 576 * (k + 1))
-        cur = int(np.count_nonzero(round_model(y[r0:r1]) != x[r0:r1]))
+        r0, r1 = 576 * g0, min(len(cand.x), 576 * (k + 1))
+        cur = mismatches(y, cand.x, r0, r1)
         for _ in range(passes):
             if cur == 0:
                 break
             best = None
             for g in range(g0, k + 1):
-                c = types[g]
-                widths, n_long, n_short = layout(sr, c)
-                starts, ends = scales.entry_bounds(widths)
-                maxsf, _, _ = scales.entry_layout(n_long, n_short, c == MIXED)
-                for j, (a, b) in enumerate(zip(starts, ends)):
-                    nnz = int(np.count_nonzero(recs["ix"][g][a:b]))
-                    loud = int(np.count_nonzero(np.abs(xhat[g, a:b]) > 4 * sigma[g, a:b]))
-                    if maxsf[j] == 0 or max(nnz, loud) == 0 or max(nnz, loud) > max_nnz:
-                        continue
-                    old_sf = int(recs["iscf"][g][j])
-                    old_ix = recs["ix"][g][a:b].copy()
-                    for sf in range(maxsf[j] + 1):
-                        if sf == old_sf:
+                for c in range(cand.C):
+                    t = cand.types[c][g]
+                    widths, n_long, n_short, mixed = _lay(cand.sr, t)
+                    starts, ends = scales.entry_bounds(widths)
+                    maxsf, _, _ = scales.entry_layout(n_long, n_short, mixed)
+                    for j, (a, b) in enumerate(zip(starts, ends)):
+                        nnz = int(np.count_nonzero(recs["ix"][g, c][a:b]))
+                        loud = int(np.count_nonzero(np.abs(cand.xhat[g, c, a:b]) > 4 * cand.sigma[g, c, a:b]))
+                        if maxsf[j] == 0 or max(nnz, loud) == 0 or max(nnz, loud) > max_nnz:
                             continue
-                        recs["iscf"][g][j] = sf
-                        sc = rec_scales(recs[g], sr, c)
-                        if sc[a] == 0:
-                            continue
-                        recs["ix"][g][a:b] = lattice.snap(xhat[g, a:b], sc[a])[0]
-                        base["iscf"][g] = recs["iscf"][g]
-                        yt = fs(recs["ix"])
-                        m = int(np.count_nonzero(round_model(yt[r0:r1]) != x[r0:r1]))
-                        if m < cur and (best is None or m < best[0]):
-                            best = (m, g, j, sf, recs["ix"][g][a:b].copy())
-                    recs["iscf"][g][j] = old_sf
-                    base["iscf"][g] = recs["iscf"][g]
-                    recs["ix"][g][a:b] = old_ix
+                        old_sf = int(recs["iscf"][g, c][j])
+                        old_ix = recs["ix"][g, c][a:b].copy()
+                        for sf in range(maxsf[j] + 1):
+                            if sf == old_sf:
+                                continue
+                            recs["iscf"][g, c][j] = sf
+                            sc = entry_scales(recs[g, c], widths, n_long, n_short, mixed, int(cand.ms[g]))
+                            if sc[a] == 0:
+                                continue
+                            recs["ix"][g, c][a:b] = lattice.snap(cand.xhat[g, c, a:b], sc[a])[0]
+                            m = mismatches(cand.synth(), cand.x, r0, r1)
+                            if m < cur and (best is None or m < best[0]):
+                                best = (m, g, c, j, sf, recs["ix"][g, c][a:b].copy(), a, b)
+                        recs["iscf"][g, c][j] = old_sf
+                        recs["ix"][g, c][a:b] = old_ix
             if best is None:
                 break
-            m, g, j, sf, newix = best
-            a, b = scales.entry_bounds(layout(sr, types[g])[0])[0][j], scales.entry_bounds(layout(sr, types[g])[0])[1][j]
-            recs["iscf"][g][j] = sf
-            base["iscf"][g] = recs["iscf"][g]
-            recs["ix"][g][a:b] = newix
-            y = fs(recs["ix"])
+            m, g, c, j, sf, newix, a, b = best
+            recs["iscf"][g, c][j] = sf
+            recs["ix"][g, c][a:b] = newix
+            cand.rescale(g, c)
+            y = cand.synth()
             cur = m
             fixed += 1
     log(f"  scale moves: {fixed} band scalefactors changed")
     return fixed
 
 
-def reconstruct_mono(x, sr, log=print, rho_refine=8.0, shift=16, repair=True, stats=None):
-    """Blind reconstruction of a mono target.  Returns (mp3 bytes, recs, stats)."""
-    from .repair import MonoRepair
-    from .rounding import round_model
-    stats = {} if stats is None else stats
+# ------------------------------------------------------------ top level
+def choose_ms(anL, anR, typesL, typesR, sr, tail_frames=0):
+    """Per frame: MS if both channels share block types and M/S fits the lattice more
+    cheaply (MDL) than L/R.  Returns (ms [G] bool, X [G,2,576], sigma [G,2,576])."""
+    G = anL.G
+    XL = np.zeros((G, 576)); XR = np.zeros((G, 576)); SL = np.zeros((G, 576)); SR = np.zeros((G, 576))
+    for g in range(G):
+        for an, t, X, S in ((anL, typesL, XL, SL), (anR, typesR, XR, SR)):
+            c2 = t[g + 1] if g + 1 < G else LONG
+            Xg, Sg = an.spectra(t[g], c2, [g])
+            X[g], S[g] = Xg[0], Sg[0]
+    XM, XS = (XL + XR) / 2, (XL - XR) / 2
+    SM = np.sqrt(SL ** 2 + SR ** 2) / 2
+    cost = {}
+    for name, X, S in (("L", XL, SL), ("R", XR, SR), ("M", XM, SM), ("S", XS, SM)):
+        cst = np.zeros(G)
+        tt = typesL if name != "R" else typesR
+        for t in set(tt):
+            sel = np.nonzero(np.asarray(tt) == t)[0]
+            widths, _, _ = layout(sr, t)
+            cst[sel] = scales.cost_curves(X[sel], S[sel], widths).min(axis=2).sum(axis=1)
+        cost[name] = cst
+    ms = np.zeros(G, bool)
+    nf = G // 2
+    for f in range(nf - tail_frames):
+        g = slice(2 * f, 2 * f + 2)
+        if np.any(np.asarray(typesL[g]) != np.asarray(typesR[g])):
+            continue
+        if (cost["M"][g] + cost["S"][g]).sum() < (cost["L"][g] + cost["R"][g]).sum():
+            ms[g] = True
+    X = np.stack([np.where(ms[:, None], XM, XL), np.where(ms[:, None], XS, XR)], axis=1)
+    S = np.stack([np.where(ms[:, None], SM, SL), np.where(ms[:, None], SM, SR)], axis=1)
+    return ms, X, S
+
+
+def reconstruct(x, sr, log=print, rho_refine=8.0, shift=16, repair=True, stereo_ms=True, repair_budget=300.0, keep=None):
+    """Blind reconstruction from target PCM x (int16 [N, C]).  Returns (mp3 bytes, stats)."""
+    from .repair import Repair
+    N, C = x.shape
+    if sr not in (32000, 44100, 48000):
+        raise NotImplementedError("only MPEG-1 sample rates are implemented")
+    if N % 1152:
+        raise ValueError("target length must be a whole number of MPEG-1 frames (1152 samples)")
+    if C > 2:
+        raise ValueError("at most 2 channels")
+    stats = {"channels": C, "samples": N, "sr": sr}
     t0 = time.time()
-    an = Analysis(x[:, 0], sr)
-    types = choose_types(an)
-    stats["types"] = {int(k): int(v) for k, v in zip(*np.unique(types, return_counts=True))}
+    ans = [Analysis(x[:, c], sr) for c in range(C)]
+    types = [choose_types(an) for an in ans]
+    G = ans[0].G
+    stats["types"] = [{int(k): int(v) for k, v in zip(*np.unique(t, return_counts=True))} for t in types]
     log(f"block types {stats['types']}  ({time.time() - t0:.1f}s)")
-    recs, info, xhat, sigma, scale_of = build_granules(an, types, rho_refine=rho_refine, shift=shift)
-    stats["refined_entries"] = int(sum(i["refined"] for i in info))
-    stats["refine_reduced_granules"] = int(sum(i["relaxed"] for i in info))
-    fs = float_synth_fn(recs, sr)
-    tail_resolve(x[:, 0], recs, fs, xhat, scale_of, types, sr, log=log)
-    y = fs(recs["ix"])
-    stats["mismatch_direct"] = int(np.count_nonzero(round_model(y) != x[:, 0]))
-    log(f"scales/side info built ({time.time() - t0:.1f}s): {stats['refined_entries']} bands refined; "
-        f"direct snap -> {stats['mismatch_direct']} mismatching samples of {len(x)}")
+    if C == 2 and stereo_ms:
+        ms, X, S = choose_ms(ans[0], ans[1], types[0], types[1], sr)
+        srcs = [CodedSource(X[:, c], S[:, c], sr, ans[c].tail) for c in range(2)]
+        coded_types = [types[0], np.where(ms, types[0], types[1])]
+    else:
+        ms = np.zeros(G, bool)
+        srcs = ans
+        coded_types = types
+    stats["ms_frames"] = int(ms[::2].sum())
+    recs = np.zeros((G, C), GR_DTYPE)
+    xhat = np.zeros((G, C, 576)); sigma = np.zeros((G, C, 576)); scale_of = np.zeros((G, C, 576), np.float32)
+    refined = 0
+    for c in range(C):
+        r, info, xh, sg, sc = build_granules(srcs[c], coded_types[c], ms=ms.astype(int),
+                                             rho_refine=rho_refine, shift=shift)
+        recs[:, c], xhat[:, c], sigma[:, c], scale_of[:, c] = r, xh, sg, sc
+        refined += sum(i["refined"] for i in info)
+    stats["refined_entries"] = int(refined)
+    cand = Candidate(x, sr, recs, coded_types, ms, xhat, sigma, scale_of)
+    tail_resolve(cand, log=log)
+    y = cand.synth()
+    stats["mismatch_direct"] = mismatches(y, x)
+    log(f"side info built ({time.time() - t0:.1f}s): {stats['ms_frames']} MS frames, {refined} bands refined; "
+        f"direct snap -> {stats['mismatch_direct']} mismatching samples of {N * C}")
     if repair and stats["mismatch_direct"]:
-        rp = MonoRepair(x[:, 0], types, xhat, sigma, scale_of, fs, sr, log=log)
-        ix, rs = rp.run(recs["ix"].astype(np.int64).copy())
-        recs["ix"] = ix
-        for rnd in range(3):
+        rp = Repair(cand, log=log)
+        rp.time_budget = repair_budget
+        rs = rp.run()
+        for _ in range(3):
             if not rs["failures"]:
                 break
-            fails = sorted(set(rs["failures"]))
-            if not scale_moves(x[:, 0], recs, fs, xhat, sigma, types, sr, fails, log=log):
+            if not scale_moves(cand, sorted(set(rs["failures"])), log=log):
                 break
-            for g in range(len(recs)):
-                scale_of[g] = rec_scales(recs[g], sr, types[g])
-            ix, rs = rp.run(recs["ix"].astype(np.int64).copy())
-            recs["ix"] = ix
+            rs = rp.run()
         if rs["failures"]:
-            exact_polish(x[:, 0], recs, fs, xhat, sigma, scale_of, sorted(set(rs["failures"])), log=log)
+            exact_polish(cand, sorted(set(rs["failures"])), log=log)
+        left = [k for k in range(G) if mismatches(cand.synth(), x, 576 * k, 576 * (k + 1))]
+        if left and all(k >= G - 6 for k in left):
+            # only the ill-conditioned tail is left: wider, deeper exact search there
+            exact_polish(cand, left, log=log, max_evals=12000, back=3, deltas=(1, -1, 2, -2))
         stats["repair"] = {k: v for k, v in rs.items() if k != "failures"}
         stats["repair_failed_granules"] = rs["failures"][:50]
-    y = fs(recs["ix"])
-    stats["mismatch_final_model"] = int(np.count_nonzero(round_model(y) != x[:, 0]))
-    mp3 = write_mp3(to_frames([recs]), sr, 1)
+    stats["mismatch_final_model"] = mismatches(cand.synth(), x)
+    if keep is not None:
+        keep.append(cand)
+    mp3 = write_mp3(cand.frames(), sr, C)
     stats["bytes"] = len(mp3)
-    stats["kbps"] = round(len(mp3) * 8 / (len(x) / sr) / 1000, 1)
+    stats["kbps"] = round(len(mp3) * 8 / (N / sr) / 1000, 1)
     stats["seconds"] = round(time.time() - t0, 1)
     log(f"candidate: {len(mp3)} bytes ({stats['kbps']} kbps), "
         f"{stats['mismatch_final_model']} mismatches (harness), {stats['seconds']} s")
-    return mp3, recs, stats
+    return mp3, stats

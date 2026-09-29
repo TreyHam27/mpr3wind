@@ -20,14 +20,14 @@ def round_model(y):
     return np.where(n, s, simd).astype(np.int16)
 
 
-def intervals(x, margin=0.0):
+def intervals(x, margin=0.0, pos=None):
     """Closed intervals [lo, hi] of pre-rounding values that map to target x.
 
     x: int16 [n] (one channel).  Boundaries are shrunk by `margin` so that
     solutions do not rely on tie-breaking or float noise.
     """
     x = np.asarray(x, np.float64)
-    n = np.arange(len(x)) % 16 == 0
+    n = (np.arange(len(x)) if pos is None else np.asarray(pos)) % 16 == 0
     lo = x - 0.5
     hi = x + 0.5
     # scalar-path quirk: 0 covers (-1.5, 0.5); -1 is unreachable

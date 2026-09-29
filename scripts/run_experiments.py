@@ -30,18 +30,19 @@ CASES = {
     # deliberately constrained: coarse constant-SNR toy encoder (our own bitstreams)
     "toy_tones_mono": ("toy", "tones", dict(rho_min=16), -6, 4),
     "toy_music_mono": ("toy", "music", dict(rho_min=16), -3, 4),
-    "toy_music_rho4": ("toy", "music", dict(rho_min=4), -3, 4),
-    "toy_music_stereo": ("toy", "music_st", dict(rho_min=16), -3, 4),
-    # LAME 3.100
-    "lame_tones_m128": ("lame", "tones", ["-m", "m", "-b", "128"], -3, 4),
-    "lame_music_m64": ("lame", "music", ["-m", "m", "-b", "64"], -3, 4),
-    "lame_music_m128": ("lame", "music", ["-m", "m", "-b", "128"], -3, 4),
-    "lame_music_m192": ("lame", "music", ["-m", "m", "-b", "192"], -3, 4),
-    "lame_music_m320": ("lame", "music", ["-m", "m", "-b", "320"], -3, 4),
-    "lame_music_mV2": ("lame", "music", ["-m", "m", "-V", "2"], -3, 4),
-    "lame_music_m128_q20": ("lame", "music", ["-m", "m", "-b", "128"], -20, 4),
-    "lame_music_s128": ("lame", "music_st", ["-m", "s", "-b", "128"], -3, 4),
-    "lame_music_j128": ("lame", "music_st", ["-m", "j", "-b", "128"], -3, 4),
+    "toy_music_stereo": ("toy", "music_st", dict(rho_min=16, ix_max=25), -3, 4),
+    # LAME 3.100 (2 s clips keep the repair search affordable)
+    "lame_tones_m128": ("lame", "tones", ["-m", "m", "-b", "128"], -3, 2),
+    "lame_music_m64": ("lame", "music", ["-m", "m", "-b", "64"], -3, 2),
+    "lame_music_m128": ("lame", "music", ["-m", "m", "-b", "128"], -3, 2),
+    "lame_music_m192": ("lame", "music", ["-m", "m", "-b", "192"], -3, 2),
+    "lame_music_m320": ("lame", "music", ["-m", "m", "-b", "320"], -3, 2),
+    "lame_music_mV2": ("lame", "music", ["-m", "m", "-V", "2"], -3, 2),
+    "lame_music_m64_q20": ("lame", "music", ["-m", "m", "-b", "64"], -20, 2),
+    "lame_music_m128_q20": ("lame", "music", ["-m", "m", "-b", "128"], -20, 2),
+    "lame_music_m320_q20": ("lame", "music", ["-m", "m", "-b", "320"], -20, 2),
+    "lame_music_s128": ("lame", "music_st", ["-m", "s", "-b", "128"], -3, 2),
+    "lame_music_j128": ("lame", "music_st", ["-m", "j", "-b", "128"], -3, 2),
 }
 QUICK = ["toy_tones_mono", "toy_music_mono", "lame_tones_m128", "lame_music_m128"]
 
