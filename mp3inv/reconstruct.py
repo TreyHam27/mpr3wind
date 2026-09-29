@@ -86,6 +86,8 @@ def choose_types(an, use_mixed=False, T=6.0):
     for g in range(G - 1, -1, -1):
         for c in classes:
             best, bc = INF, -1
+            if g == G - 1 and c not in (LONG, STOP):
+                continue          # a legal window sequence ends in a long or stop block
             for (a, b) in pairs:
                 if a != c:
                     continue
@@ -159,7 +161,7 @@ class CodedSource:
         return self.X[gs], self.sigma[gs]
 
 
-def build_granules(an, types, ms=0, rho_refine=8.0, shift=16, max_bits=4000, log=None):
+def build_granules(an, types, ms=0, rho_refine=8.0, shift=16, max_bits=3500, log=None):
     """Estimate scales, decompose into side info and snap ix for every granule of one coded
     channel.  `ms` is a scalar or a per-granule array (MS-stereo scale offset).
 
@@ -283,7 +285,7 @@ def mismatches(y, x, r0=0, r1=None):
 
 
 # ------------------------------------------------------------------- tail
-def tail_resolve(cand, ntail=4, lam=1e-5, log=print):
+def tail_resolve(cand, ntail=4, lam=1e-5, log=print, tail_inflated=3, inflate=16.0):
     """Re-estimate the last `ntail` granules by ridge least squares on the observed samples.
 
     The decoder output of the final granules extends past the end of the file, so the
@@ -322,11 +324,19 @@ def tail_resolve(cand, ntail=4, lam=1e-5, log=print):
     M = np.stack(cols, axis=1)
     reg = lam * np.mean(np.sum(M * M, axis=0))
     a = np.linalg.solve(M.T @ M + reg * np.eye(M.shape[1]), M.T @ r).reshape(G - g0, C, 576)
+    # re-estimate the tail scales from the ridge solution with the *uninflated* noise level
+    # (the inflated one only served to keep the TDAC estimate from fitting garbage)
+    sig = cand.sigma[g0:].copy()
     for k, g in enumerate(range(g0, G)):
-        for c in range(C):
-            sc = cand.scale_of[g, c]
-            cand.xhat[g, c] = a[k, c]
-            cand.recs["ix"][g, c] = np.where(sc > 0, lattice.snap(a[k, c], np.where(sc > 0, sc, 1))[0], 0)
+        if g >= G - tail_inflated:
+            sig[k] /= inflate
+    for c in range(C):
+        src = CodedSource(a[:, c], sig[:, c], cand.sr, tail=0)
+        recs, _, xh, sg, sc = build_granules(src, list(cand.types[c][g0:]), ms=cand.ms[g0:].astype(int),
+                                             rho_refine=0)
+        # keep START legality w.r.t. the granule before the tail
+        cand.recs[g0:, c] = recs
+        cand.xhat[g0:, c], cand.sigma[g0:, c], cand.scale_of[g0:, c] = xh, sg, sc
     log(f"  tail: re-solved last {G - g0} granules by ridge LS")
 
 
@@ -435,8 +445,32 @@ def scale_moves(cand, granules, log=print, max_nnz=4, passes=2):
     return fixed
 
 
+def enforce_bit_limit(cand, limit=4095, log=print):
+    """Legality guard: part2_3_length must fit in 12 bits.  If a granule is over the limit
+    (rare; after refinement plus repair), drop its highest-frequency nonzero values until
+    it fits.  This keeps the file legal at the price of exactness in that granule."""
+    from .bitstream import encode_granule
+    trimmed = 0
+    for g in range(cand.G):
+        for c in range(cand.C):
+            r = cand.recs[g, c]
+            while True:
+                try:
+                    bits = encode_granule(r, cand.sr)[1]["part_23_length"]
+                except ValueError:
+                    bits = limit + 1
+                if bits <= limit:
+                    break
+                nz = np.nonzero(r["ix"])[0]
+                r["ix"][nz[-max(1, len(nz) // 20):]] = 0
+                trimmed += 1
+    if trimmed:
+        log(f"  bit limit: trimmed {trimmed} times to stay within {limit} bits/granule")
+    return trimmed
+
+
 # ------------------------------------------------------------ top level
-def choose_ms(anL, anR, typesL, typesR, sr, tail_frames=0):
+def choose_ms(anL, anR, typesL, typesR, sr, tail_frames=2):
     """Per frame: MS if both channels share block types and M/S fits the lattice more
     cheaply (MDL) than L/R.  Returns (ms [G] bool, X [G,2,576], sigma [G,2,576])."""
     G = anL.G
@@ -465,6 +499,11 @@ def choose_ms(anL, anR, typesL, typesR, sr, tail_frames=0):
             continue
         if (cost["M"][g] + cost["S"][g]).sum() < (cost["L"][g] + cost["R"][g]).sum():
             ms[g] = True
+    # tail frames: the fit is meaningless there (inflated noise); inherit the last decision
+    last = bool(ms[2 * (nf - tail_frames) - 1]) if nf > tail_frames else False
+    for f in range(max(0, nf - tail_frames), nf):
+        g = slice(2 * f, 2 * f + 2)
+        ms[g] = last and np.all(np.asarray(typesL[g]) == np.asarray(typesR[g]))
     X = np.stack([np.where(ms[:, None], XM, XL), np.where(ms[:, None], XS, XR)], axis=1)
     S = np.stack([np.where(ms[:, None], SM, SL), np.where(ms[:, None], SM, SR)], axis=1)
     return ms, X, S
@@ -530,6 +569,9 @@ def reconstruct(x, sr, log=print, rho_refine=8.0, shift=16, repair=True, stereo_
         stats["repair"] = {k: v for k, v in rs.items() if k != "failures"}
         stats["repair_failed_granules"] = rs["failures"][:50]
     stats["mismatch_final_model"] = mismatches(cand.synth(), x)
+    stats["trimmed_granules"] = enforce_bit_limit(cand, log=log)
+    if stats["trimmed_granules"]:
+        stats["mismatch_final_model"] = mismatches(cand.synth(), x)
     if keep is not None:
         keep.append(cand)
     mp3 = write_mp3(cand.frames(), sr, C)

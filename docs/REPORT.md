@@ -53,17 +53,32 @@ Pipeline (`mp3inv/reconstruct.py`):
    Exact scale floats come from the decoder's own `L3_ldexp_q2`.
 5. **Snap** the spectra to the decoder's own lattice (minimp3's `L3_pow_43`, including
    its polynomial approximation above 128).
-6. **Superset refinement** (Section 4.3). Bands in the ambiguous regime get the lattice
-   `q−16`, which contains the original lattice up to float rounding.
-7. **Repair** (`mp3inv/repair.py`). This is a causal sweep over granules. It uses the
-   exact float output of the decoder for the current candidate. The model predicts the
-   effect of changing low-confidence coefficients to neighbouring lattice values. A
-   greedy toggle search runs first, then a MILP (HiGHS) that minimises the
-   log-likelihood cost subject to every sample staying inside its rounding interval.
-   Each accepted change is re-checked with the decoder's code.
-8. **Write** a legal MPEG-1 Layer III stream (`mp3inv/bitstream.py`). The writer
-   chooses Huffman tables, region split, big_values/count1 boundary, count1 table,
-   scalefac_compress, reservoir usage and per-frame bitrate to minimise size.
+6. **Stereo.** For each frame, choose L/R or M/S (M=(L+R)/2, S=(L−R)/2, with the
+   decoder's −2 quarter-step MS gain) by the summed MDL cost of both granules. MS needs
+   equal block types in both channels. The coded channels (L,R or M,S) then go through
+   the same scale/snap machinery. Synthesis and repair are joint: an M coefficient moves
+   both outputs (+,+) and an S coefficient moves them (+,−).
+7. **Superset refinement** (Section 4.3). Bands in the ambiguous regime get the lattice
+   `q−16`, which contains the original lattice up to float rounding. Only bands with at
+   least 4 nonzeros qualify, never in the tail, and only while the granule stays under
+   the 4095-bit limit.
+8. **End of file.** The last granules' output runs past the end of the file, so the
+   inverse is ill-conditioned there. Their noise level is inflated, and the last 4
+   granules are re-solved by ridge least squares on the samples that exist (MS-aware).
+9. **Repair** (`mp3inv/repair.py`).
+   - A causal sweep over granules, starting from the exact float output of the decoder
+     for the current candidate. The model predicts the effect of changing low-confidence
+     coefficients to neighbouring lattice values (or to zero, in the tail).
+   - A greedy toggle search runs first, then a MILP (HiGHS) that minimises the
+     log-likelihood cost subject to every sample staying inside its rounding interval.
+   - Every change is re-checked with the decoder's code and kept only if it lowers the
+     exact mismatch count over the changed coefficients' whole footprint.
+   - Fallbacks: *scale moves* (try every scalefactor for sparse bands near a failure),
+     then an *exact polish* (greedy ±1/±2/zero coordinate search where every trial is a
+     real decoder run, 3.6 ms per file synthesis).
+10. **Write** a legal MPEG-1 Layer III stream (`mp3inv/bitstream.py`). The writer
+    chooses Huffman tables, region split, big_values/count1 boundary, count1 table,
+    scalefac_compress, reservoir usage and per-frame bitrate to minimise size.
 
 ## 3. Things that work (verified)
 
