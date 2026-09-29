@@ -155,6 +155,17 @@ steps), and 12–18% of bands with content get a scale different from LAME's.
   8552 to 314 (tones, 128k), and by 32 to 55. Non-superset shifts (4, 8, 12, 20, 24)
   made things far worse (10k–134k mismatches). Refining only bands with ρ < 16 is the
   best trade-off: 763 / 400 mismatches at about 2× the original Huffman bits.
+* **But the syntax limits it.** The numbers above divided the scale floats directly. In
+  a real bitstream a band can only get finer through its scalefactor. Bands 11–20 have
+  at most 3 bits (sf ≤ 7), so +16 quarter-steps (sf+8 at scalefac_scale 0) is usually
+  impossible exactly where the middle regime lives, in the high bands. The
+  alternative, lowering global_gain by 16, needs every *other* band's ix ×8 to stay
+  ≤ 8206 and within the bit budget. With oracle scales, representable per-band
+  refinement left 4262 mismatches vs 4147 without it (LAME tones, 128k, 2 s), and
+  granule-wide `global_gain−16` applied to only 16 of 158 granules.
+* **Blind, refinement barely helps** (8351 → 8104 mismatches, at +12% bitrate), because
+  it needs the *correct* base lattice: a superset of a wrong lattice does not contain
+  the original values.
 
 ### 4.4 Float arithmetic makes "any preimage" nearly as hard as "the original"
 
@@ -170,7 +181,56 @@ change of ~0.6 LSB flips a few. So:
 * any alternative solution must be confirmed with the exact decoder, and near-boundary
   samples turn the last steps into a search with exact evaluation.
 
-### 4.5 Decoder quirks that matter for exactness
+### 4.5 The integer search in the middle regime is the real wall
+
+`scripts/oracle_scales.py` separates the two blind sub-problems. It takes the
+original's block types, MS flags, global gains and scalefactors, estimates only the
+integers from the WAV, and runs the same repair.
+
+| LAME tones, 128k, 2 s (91 008 samples) | mismatches |
+|---|---|
+| blind, direct snap | 7237 |
+| oracle scales, direct snap | 4147 |
+| oracle scales + full repair (greedy/MILP sweep, scale moves, exact polish) | 3933 |
+
+So even with perfect scales, local search fixes only ~5%. The problem is lattice
+decoding with a box-shaped noise model:
+
+* each ambiguous coefficient touches ~1600 samples;
+* each sample constraint is individually weak;
+* the information is spread across many samples;
+* windows restricted to already-seen samples admit non-original solutions that dead-end
+  later, while full-footprint windows couple 3–4 granules and hundreds of binaries.
+
+HiGHS hits its time limit (5–60 s per window) without a feasible point. Greedy toggling
+stalls in local minima: a real change moves ~20 samples near a boundary, some in the
+wrong direction. By contrast, sparse errors (a few wrong coefficients per granule, as in
+the toy cases) are fixed reliably in ~0.1 s per granule.
+
+### 4.6 End of file
+
+The last ~3 granules produce output past the end of the file, so their spectra are
+poorly determined and the TDAC/polyphase inverse returns garbage there. Three fixes
+were needed before the constrained cases became exact:
+
+1. ridge least squares over the samples that exist, jointly over both coded channels,
+   followed by scale estimation on that estimate with the *uninflated* noise level;
+2. a legal final block type (LONG/STOP). minimp3 windows the previous granule's
+   overlap with the next granule's type, so this changes observed samples. LAME ends
+   short→stop;
+3. MS/LR in the tail frames inherited from the last reliable frame. Forcing L/R there
+   is wrong when the original is M/S, because L = M+S is generally not on any single
+   L lattice.
+
+### 4.7 Joint stereo
+
+For each frame, MS vs L/R is decided by comparing MDL costs. On a strongly correlated
+LAME `-m j` clip it matched the original on all 38 decidable frames. On pure-L/R toy
+stereo it chose L/R everywhere. Coded M/S values are reconstructed and repaired
+jointly; the toy L/R stereo case is exact. Joint-stereo LAME material fails at the
+same place as mono: the middle regime.
+
+### 4.8 Decoder quirks that matter for exactness
 
 * `L3_pow_43` uses a polynomial approximation for |ix| ≥ 129. The lattice is the
   decoder's lattice, not `x^{4/3}`.
@@ -190,4 +250,34 @@ change of ~0.6 LSB flips a few. So:
 
 ## 6. What is not done / next steps
 
-*(filled in at the end)*
+**Not implemented** (the obstacles are understood, but there is no code):
+
+* **Gapless-trimmed targets / unknown frame offset.** The frame grid is assumed to
+  start at sample 0, which holds for minimp3's frame API. A trimming decoder
+  (minimp3_ex, ffmpeg with a LAME tag) shifts the grid by encoder delay + 529. The
+  offset could be found by scanning the 1152 phases for the sharpest lattice fit, then
+  writing a LAME/Info tag with matching delay/padding. minimp3's "no −1 at n%16==0"
+  quirk also gives the phase mod 16 for free.
+* **Clipped targets.** Saturated samples would become one-sided constraints, both in the
+  inverse (masked CGLS) and in the repair intervals. `rounding.intervals` already models
+  the clamp. Our test signals avoid clipping.
+* **MPEG-2/2.5 LSF, intensity stereo, mixed blocks from other encoders.** The model and
+  writer are partly ready: mixed blocks are identified, and the harness handles
+  LSF/IS. What's missing is the LSF scalefactor syntax in the writer, and IS detection
+  (constant per-band L/R ratio from the 7 `is_pos` values).
+* **Another reference decoder** (mpg123, ffmpeg). The method carries over unchanged,
+  but the linear model, lattice floats and rounding rule must be re-identified from that
+  decoder's own code, just as was done here for minimp3.
+
+**The research problem that remains: decoding the middle regime.**
+
+* Needed: a real lattice decoder (sphere decoding / K-best on the near-orthogonal
+  basis with box constraints, or belief propagation). It must decode jointly over the
+  3–4 granules a coefficient touches, and use the exact decoder as the final check.
+* Prerequisite: blind scale identification for sparse, near-LSB bands. It currently
+  prefers a coarser lattice than LAME, and a wrong base lattice defeats superset
+  refinement.
+* Freedom that could be exploited better:
+  - refining whole granules (global_gain − 16) where the bit budget allows;
+  - switching scalefac_scale to reach bands 11–20;
+  - accepting higher bitrates, since only the 4095-bit granule limit is hard.

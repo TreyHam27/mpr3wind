@@ -390,7 +390,7 @@ def exact_polish(cand, granules, log=print, max_evals=4000, back=2, deltas=(1, -
     return fixed
 
 
-def scale_moves(cand, granules, log=print, max_nnz=4, passes=2):
+def scale_moves(cand, granules, log=print, max_nnz=4, passes=2, budget=3900):
     """Fallback for granules the integer repair cannot fix: the scale of a sparse band is
     ambiguous (a lone value fits several (ix, scale) pairs within noise).  Try every
     scalefactor value for sparse bands near the failure, re-snap that band, and keep
@@ -435,14 +435,27 @@ def scale_moves(cand, granules, log=print, max_nnz=4, passes=2):
             if best is None:
                 break
             m, g, c, j, sf, newix, a, b = best
+            old_sf, old_ix = int(recs["iscf"][g, c][j]), recs["ix"][g, c][a:b].copy()
             recs["iscf"][g, c][j] = sf
             recs["ix"][g, c][a:b] = newix
+            if granule_bits(recs[g, c], cand.sr) > budget:      # keep the file legal
+                recs["iscf"][g, c][j] = old_sf
+                recs["ix"][g, c][a:b] = old_ix
+                break
             cand.rescale(g, c)
             y = cand.synth()
             cur = m
             fixed += 1
     log(f"  scale moves: {fixed} band scalefactors changed")
     return fixed
+
+
+def granule_bits(rec, sr):
+    from .bitstream import encode_granule
+    try:
+        return encode_granule(rec, sr)[1]["part_23_length"]
+    except ValueError:
+        return 1 << 20
 
 
 def enforce_bit_limit(cand, limit=4095, log=print):

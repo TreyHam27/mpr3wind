@@ -16,7 +16,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from mp3inv import lattice  # noqa: E402
+from mp3inv import lattice, scales  # noqa: E402
 from mp3inv.bitstream import write_mp3  # noqa: E402
 from mp3inv.reconstruct import (Analysis, Candidate, LONG, MIXED, entry_scales, _lay,  # noqa: E402
                                 exact_polish, mismatches, scale_moves, tail_resolve)
@@ -31,6 +31,8 @@ def main():
     ap.add_argument("target")
     ap.add_argument("--refine", action="store_true")
     ap.add_argument("--no-repair", action="store_true")
+    ap.add_argument("--refine-bands", type=float, default=0,
+                    help="superset-refine bands with step/sigma below this (scalefactor += 16 quarter steps)")
     a = ap.parse_args()
     x, sr = read_wav(a.target)
     N, C = x.shape
@@ -59,6 +61,19 @@ def main():
             if a.refine and g < G - 4 and r["global_gain"] >= 16 and np.abs(r["ix"]).max() * 8 <= lattice.IX_MAX:
                 r["global_gain"] -= 16
                 refined += 1
+            if a.refine_bands and g < G - 4:
+                widths, n_long, n_short, mixed = _lay(sr, types[c][g])
+                st, en = scales.entry_bounds(widths)
+                maxsf, _, _ = scales.entry_layout(n_long, n_short, mixed)
+                sc0 = entry_scales(r, widths, n_long, n_short, mixed, int(ms[g]))
+                m = 2 << int(r["scalefac_scale"])
+                for j, (b0, b1) in enumerate(zip(st, en)):
+                    nz = np.abs(r["ix"][b0:b1])
+                    if (maxsf[j] and sc0[b0] > 0 and np.count_nonzero(nz) >= 1
+                            and sc0[b0] / sigma[g, c, b0] < a.refine_bands and nz.max() * 8 <= 8100
+                            and r["iscf"][j] + 16 // m <= maxsf[j]):
+                        r["iscf"][j] += 16 // m
+                        refined += 1
             scale_of[g, c] = entry_scales(r, *_lay(sr, types[c][g]), int(ms[g]))
             sc = scale_of[g, c]
             r["ix"] = np.where(sc > 0, lattice.snap(xhat[g, c], np.where(sc > 0, sc, 1))[0], 0)
