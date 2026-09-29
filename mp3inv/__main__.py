@@ -71,7 +71,7 @@ def main(argv=None):
     p.add_argument("target")
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--json")
-    p.add_argument("--rho-refine", type=float, default=16.0)
+    p.add_argument("--rho-refine", type=float, default=8.0)
     p.add_argument("--shift", type=int, default=16)
     p.add_argument("--no-repair", action="store_true")
     p.set_defaults(fn=cmd_reconstruct)

@@ -14,7 +14,7 @@ from .refdec import GR_DTYPE
 SIGMA_E = np.sqrt(1.0 / 12.0)
 
 
-def encode(pcm, sr=44100, rho_min=16.0, ix_max=1000, bitrate="vbr"):
+def encode(pcm, sr=44100, rho_min=16.0, ix_max=60, bitrate="vbr"):
     pcm = np.asarray(pcm, np.float64)
     if pcm.ndim == 1:
         pcm = pcm[:, None]

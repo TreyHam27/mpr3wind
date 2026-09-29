@@ -39,6 +39,8 @@ class Analysis:
         self.G = self.u.shape[0]
         self._d = {}
         self._curves = {}
+        self.tail = 3
+        self.tail_inflate = 16.0
 
     def diag(self, c, c2):
         key = (c, c2)
@@ -56,7 +58,12 @@ class Analysis:
         d = self.diag(c, c2)
         X = (u0 @ self.A[c] + u1 @ self.B[(c, c2)]) / d
         sigma = SIGMA_E / np.sqrt(d * self.cpoly)
-        return X, np.broadcast_to(sigma, X.shape)
+        sigma = np.broadcast_to(sigma, X.shape).copy()
+        # end of file: the synthesis tail is truncated, so the last granules are
+        # poorly determined -- widen their noise so the fit prefers zeros there
+        tail = gs >= self.G - self.tail
+        sigma[tail] *= self.tail_inflate
+        return X, sigma
 
 
 def choose_types(an, use_mixed=False, T=6.0):
@@ -96,7 +103,7 @@ def choose_types(an, use_mixed=False, T=6.0):
     return np.array(seq)
 
 
-def refine_curves(C, v, sigma, widths, rho_refine=16.0, shift=16):
+def refine_curves(C, v, sigma, widths, rho_refine=16.0, shift=16, min_nnz=4):
     """Superset refinement: for entries whose MDL lattice has step/sigma < rho_refine,
     only allow q <= q_hat - shift.  q_hat - 16 multiplies ix by 8 and (up to float
     rounding of the pow43 table) contains every point of the q_hat lattice, so the
@@ -112,7 +119,7 @@ def refine_curves(C, v, sigma, widths, rho_refine=16.0, shift=16):
         s = lattice.ideal_scale(qh)
         sj = float(np.median(sigma[a:b]))
         ix, _ = lattice.snap(v[a:b], np.float32(s))
-        if not ix.any():
+        if np.count_nonzero(ix) < min_nnz:      # sparse band: its scale estimate is unreliable
             continue
         rho[j] = s / sj
         if rho[j] >= rho_refine or np.abs(ix).max() * 2 ** (3 * shift / 16) > 8100:
@@ -138,7 +145,7 @@ def entry_scales(dec, widths, n_long, n_short, mixed, ms):
     return out
 
 
-def build_granules(an, types, ms=0, rho_refine=16.0, shift=16, max_bits=4000, log=None):
+def build_granules(an, types, ms=0, rho_refine=8.0, shift=16, max_bits=4000, log=None):
     """Estimate scales, decompose into side info and snap ix for every granule of one channel.
 
     Returns recs (GR_DTYPE [G]), per-granule info, and arrays xhat/sigma/scale_of [G, 576]."""
@@ -159,7 +166,7 @@ def build_granules(an, types, ms=0, rho_refine=16.0, shift=16, max_bits=4000, lo
             C0 = an._curves[(c, c2)][g]
         else:
             C0 = scales.cost_curves(X, sig, widths)[0]
-        rr = rho_refine
+        rr = rho_refine if g < G - an.tail - 1 else 0     # never refine the ill-conditioned tail
         while True:
             if rr and shift:
                 C, refined, rho = refine_curves(C0, X[0], sig[0], widths, rr, shift)
@@ -171,6 +178,9 @@ def build_granules(an, types, ms=0, rho_refine=16.0, shift=16, max_bits=4000, lo
                 continue
             sc = entry_scales(dec, widths, n_long, n_short, c == MIXED, ms)
             ix = np.where(sc > 0, lattice.snap(X[0], np.where(sc > 0, sc, 1))[0], 0)
+            if rr and np.abs(ix).max() >= lattice.IX_MAX:     # clipped: refinement too fine here
+                rr = rr / 2 if rr > 2 else 0
+                continue
             tmp = np.zeros(1, GR_DTYPE)[0]
             bt, mx = _bt_mx(c)
             tmp["block_type"], tmp["mixed_block_flag"] = bt, mx
@@ -265,10 +275,164 @@ def float_synth_fn(recs, sr, mode=3, mode_ext=0):
         base["ix"] = ix
         st = H.new_state(hdr)
         return H.synth(st, hdrs, base[:, None], 1)[:, 0]
+    f.base = base
     return f
 
 
-def reconstruct_mono(x, sr, log=print, rho_refine=16.0, shift=16, repair=True, stats=None):
+def tail_resolve(x, recs, fs, xhat, scale_of, types, sr, ntail=4, lam=1e-5, log=print):
+    """Re-estimate the last `ntail` granules by ridge least squares on the observed samples.
+
+    The decoder's output for the final granules extends past the end of the file, so the
+    TDAC/polyphase inverse is ill-conditioned there.  Here the earlier granules are held
+    at their current values and the tail coefficients solve
+        min ||M a - r||^2 + lam * ||M||^2 ||a||^2
+    over the samples that exist, which pulls unobservable directions to zero."""
+    from .repair import responses
+    G = len(recs)
+    g0 = max(0, G - ntail)
+    N = len(x)
+    r0 = 576 * g0
+    ix0 = recs["ix"].copy()
+    ix0[g0:] = 0
+    y0 = fs(ix0)
+    r = x[r0:].astype(np.float64) - y0[r0:]
+    cols = []
+    for g in range(g0, G):
+        R = responses(types[g], types[g + 1] if g + 1 < G else LONG, sr)
+        for i in range(576):
+            col = np.zeros(N - r0)
+            st = 576 * g - r0
+            L = min(len(col) - st, R.shape[1])
+            col[st:st + L] = R[i, :L]
+            cols.append(col)
+    M = np.stack(cols, axis=1)
+    reg = lam * np.mean(np.sum(M * M, axis=0))
+    a = np.linalg.solve(M.T @ M + reg * np.eye(M.shape[1]), M.T @ r)
+    a = a.reshape(G - g0, 576)
+    for k, g in enumerate(range(g0, G)):
+        sc = scale_of[g]
+        xhat[g] = a[k]
+        recs["ix"][g] = np.where(sc > 0, lattice.snap(a[k], np.where(sc > 0, sc, 1))[0], 0)
+    log(f"  tail: re-solved last {G - g0} granules by ridge LS")
+
+
+def exact_polish(x, recs, fs, xhat, sigma, scale_of, granules, log=print, max_evals=4000, zmax=6.0):
+    """Greedy coordinate search evaluated with the decoder itself (no model).
+
+    For each failing PCM granule k, candidate moves are +-1 and zeroing on coefficients of
+    granules k-2..k that are nonzero or within zmax*sigma of a nonzero lattice value.
+    A move is kept iff the exact mismatch count on samples [576(k-2), end) decreases."""
+    from .rounding import round_model
+    G = len(recs)
+    N = len(x)
+    evals = 0
+    fixed = 0
+    y = fs(recs["ix"])
+    for k in granules:
+        g0 = max(0, k - 2)
+        r0 = 576 * g0
+        cur = int(np.count_nonzero(round_model(y[r0:]) != x[r0:]))
+        improved = True
+        while cur and improved and evals < max_evals:
+            improved = False
+            moves = []
+            for g in range(g0, min(G, k + 1)):
+                ix = recs["ix"][g]
+                s = scale_of[g]
+                near = (np.abs(xhat[g]) > (np.abs(xhat[g]) - zmax * sigma[g]).clip(0)) & (s > 0)
+                idx = np.nonzero((ix != 0) | (np.abs(xhat[g]) >= s * 0.5 - zmax * sigma[g]) & near)[0]
+                for i in idx:
+                    for nv in {int(ix[i]) + 1, int(ix[i]) - 1, 0}:
+                        if nv != ix[i] and abs(nv) <= lattice.IX_MAX:
+                            cost = abs(lattice.dequant(nv, s[i]) - xhat[g, i]) / sigma[g, i]
+                            moves.append((cost, g, i, nv))
+            moves.sort()
+            for cost, g, i, nv in moves:
+                if evals >= max_evals:
+                    break
+                old = recs["ix"][g][i]
+                recs["ix"][g][i] = nv
+                yt = fs(recs["ix"])
+                evals += 1
+                m = int(np.count_nonzero(round_model(yt[r0:]) != x[r0:]))
+                if m < cur:
+                    cur, y = m, yt
+                    fixed += 1
+                    improved = True
+                    if not cur:
+                        break
+                else:
+                    recs["ix"][g][i] = old
+    log(f"  exact polish: {fixed} moves kept, {evals} decoder evaluations")
+    return fixed
+
+
+def rec_scales(rec, sr, types_c, ms=0):
+    widths, n_long, n_short = layout(sr, types_c)
+    return entry_scales(rec, widths, n_long, n_short, types_c == MIXED, ms)
+
+
+def scale_moves(x, recs, fs, xhat, sigma, types, sr, granules, log=print, max_nnz=4, passes=2):
+    """Fallback for granules the integer repair cannot fix: the scale of a sparse band is
+    ambiguous (a lone value fits several (ix, scale) pairs within noise).  Try every
+    scalefactor value for sparse bands near the failure, re-snap that band, and keep
+    changes that reduce the exact mismatch count."""
+    from .rounding import round_model
+    base = fs.base
+    G = len(recs)
+    fixed = 0
+    y = fs(recs["ix"])
+    for k in granules:
+        g0 = max(0, k - 2)
+        r0, r1 = 576 * g0, min(len(x), 576 * (k + 1))
+        cur = int(np.count_nonzero(round_model(y[r0:r1]) != x[r0:r1]))
+        for _ in range(passes):
+            if cur == 0:
+                break
+            best = None
+            for g in range(g0, k + 1):
+                c = types[g]
+                widths, n_long, n_short = layout(sr, c)
+                starts, ends = scales.entry_bounds(widths)
+                maxsf, _, _ = scales.entry_layout(n_long, n_short, c == MIXED)
+                for j, (a, b) in enumerate(zip(starts, ends)):
+                    nnz = int(np.count_nonzero(recs["ix"][g][a:b]))
+                    loud = int(np.count_nonzero(np.abs(xhat[g, a:b]) > 4 * sigma[g, a:b]))
+                    if maxsf[j] == 0 or max(nnz, loud) == 0 or max(nnz, loud) > max_nnz:
+                        continue
+                    old_sf = int(recs["iscf"][g][j])
+                    old_ix = recs["ix"][g][a:b].copy()
+                    for sf in range(maxsf[j] + 1):
+                        if sf == old_sf:
+                            continue
+                        recs["iscf"][g][j] = sf
+                        sc = rec_scales(recs[g], sr, c)
+                        if sc[a] == 0:
+                            continue
+                        recs["ix"][g][a:b] = lattice.snap(xhat[g, a:b], sc[a])[0]
+                        base["iscf"][g] = recs["iscf"][g]
+                        yt = fs(recs["ix"])
+                        m = int(np.count_nonzero(round_model(yt[r0:r1]) != x[r0:r1]))
+                        if m < cur and (best is None or m < best[0]):
+                            best = (m, g, j, sf, recs["ix"][g][a:b].copy())
+                    recs["iscf"][g][j] = old_sf
+                    base["iscf"][g] = recs["iscf"][g]
+                    recs["ix"][g][a:b] = old_ix
+            if best is None:
+                break
+            m, g, j, sf, newix = best
+            a, b = scales.entry_bounds(layout(sr, types[g])[0])[0][j], scales.entry_bounds(layout(sr, types[g])[0])[1][j]
+            recs["iscf"][g][j] = sf
+            base["iscf"][g] = recs["iscf"][g]
+            recs["ix"][g][a:b] = newix
+            y = fs(recs["ix"])
+            cur = m
+            fixed += 1
+    log(f"  scale moves: {fixed} band scalefactors changed")
+    return fixed
+
+
+def reconstruct_mono(x, sr, log=print, rho_refine=8.0, shift=16, repair=True, stats=None):
     """Blind reconstruction of a mono target.  Returns (mp3 bytes, recs, stats)."""
     from .repair import MonoRepair
     from .rounding import round_model
@@ -282,6 +446,7 @@ def reconstruct_mono(x, sr, log=print, rho_refine=16.0, shift=16, repair=True, s
     stats["refined_entries"] = int(sum(i["refined"] for i in info))
     stats["refine_reduced_granules"] = int(sum(i["relaxed"] for i in info))
     fs = float_synth_fn(recs, sr)
+    tail_resolve(x[:, 0], recs, fs, xhat, scale_of, types, sr, log=log)
     y = fs(recs["ix"])
     stats["mismatch_direct"] = int(np.count_nonzero(round_model(y) != x[:, 0]))
     log(f"scales/side info built ({time.time() - t0:.1f}s): {stats['refined_entries']} bands refined; "
@@ -290,6 +455,18 @@ def reconstruct_mono(x, sr, log=print, rho_refine=16.0, shift=16, repair=True, s
         rp = MonoRepair(x[:, 0], types, xhat, sigma, scale_of, fs, sr, log=log)
         ix, rs = rp.run(recs["ix"].astype(np.int64).copy())
         recs["ix"] = ix
+        for rnd in range(3):
+            if not rs["failures"]:
+                break
+            fails = sorted(set(rs["failures"]))
+            if not scale_moves(x[:, 0], recs, fs, xhat, sigma, types, sr, fails, log=log):
+                break
+            for g in range(len(recs)):
+                scale_of[g] = rec_scales(recs[g], sr, types[g])
+            ix, rs = rp.run(recs["ix"].astype(np.int64).copy())
+            recs["ix"] = ix
+        if rs["failures"]:
+            exact_polish(x[:, 0], recs, fs, xhat, sigma, scale_of, sorted(set(rs["failures"])), log=log)
         stats["repair"] = {k: v for k, v in rs.items() if k != "failures"}
         stats["repair_failed_granules"] = rs["failures"][:50]
     y = fs(recs["ix"])

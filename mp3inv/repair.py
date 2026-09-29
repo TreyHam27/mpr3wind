@@ -167,12 +167,17 @@ class MonoRepair:
             c = self.types[g]
             c2 = self.types[g + 1] if g + 1 < self.G else LM.LONG
             R = responses(c, c2, self.sr)
-            for d, ok, v, dv in _options_vec(ix[g], self.xhat[g], self.scale_of[g], self.sigma[g], zmax):
+            opts = _options_vec(ix[g], self.xhat[g], self.scale_of[g], self.sigma[g], zmax)
+            if g >= self.G - 4:
+                # poorly determined tail: also allow zeroing any coefficient
+                cz = lattice.dequant(ix[g], self.scale_of[g])
+                opts.append((0, ix[g] != 0, np.zeros_like(ix[g]), -cz))
+            for d, ok, v, dv in opts:
                 cur = lattice.dequant(ix[g], self.scale_of[g])
                 for i in np.nonzero(ok)[0]:
                     new = lattice.dequant(v[i], self.scale_of[g, i])
                     llr = ((self.xhat[g, i] - new) ** 2 - (self.xhat[g, i] - cur[i]) ** 2) / (2 * self.sigma[g, i] ** 2)
-                    cands.append(((g, i, d), dv[i], 576 * g, R[i], llr))
+                    cands.append(((g, i, d if d else -int(ix[g, i]) * 100000), dv[i], 576 * g, R[i], llr))
         if len(cands) > max_cands:
             cands.sort(key=lambda t: t[4])
             cands = cands[:max_cands]
@@ -218,7 +223,7 @@ class MonoRepair:
                     continue
                 trial = ix.copy()
                 for (g, i, d) in sol:
-                    trial[g, i] += d
+                    trial[g, i] = 0 if abs(d) >= 100000 else trial[g, i] + d
                 yt = self.synth_float(trial)
                 re = rows[-1] + 1
                 before = np.count_nonzero(round_model(y[576 * g0:re]) != x[576 * g0:re])

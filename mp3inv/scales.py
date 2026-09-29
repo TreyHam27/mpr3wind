@@ -59,12 +59,14 @@ def fit_entries(v, sigma, widths, T=6.0, q_range=(Q_MIN, Q_MAX)):
 
 
 LOG2E = 1.4426950408889634
+NZ_BITS = 8.0      # prior cost of a nonzero coefficient (guards against fitting noise outliers)
+SF_BITS = 6.0      # prior cost of a nonzero scalefactor (a band deviating from global_gain)
 
 
 def ix_bits(ix):
     """Crude Huffman cost model per coefficient (bits)."""
     a = np.abs(ix)
-    return 2.0 * np.log2(1.0 + a) + (a > 0) + 0.25
+    return 2.0 * np.log2(1.0 + a) + NZ_BITS * (a > 0) + 0.25
 
 
 def cost_curves(v, sigma, widths, q_lo=Q_MIN, q_hi=Q_MAX, kappa=1.0):
@@ -120,6 +122,7 @@ def decompose_curves(C, n_long, n_short, mixed, ms=0, q_lo=Q_MIN):
                     valid = sfr[None, None, :] <= maxsf[idx][None, :, None]
                     qi = np.clip(qq - q_lo, 0, Q - 1)
                     cc = C[idx][None, :, :][np.zeros_like(qi), np.arange(len(idx))[None, :, None], qi]
+                    cc = cc + SF_BITS * (sfr[None, None, :] > 0)
                     cc = np.where(valid & (qq >= q_lo) & (qq <= q_hi), cc, np.inf)
                     sfbest = np.argmin(cc, axis=2)
                     cbest = np.take_along_axis(cc, sfbest[:, :, None], axis=2)[:, :, 0].sum(axis=1)
